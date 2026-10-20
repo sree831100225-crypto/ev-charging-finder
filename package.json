@@ -6,9 +6,6 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {
-    "@netlify/blobs": "^11.1.5"
-  },
   "scripts": {
     "dev": "netlify dev"
   }

@@ -28,7 +28,12 @@ function getBlobStore() {
   if (blobResolved) return blobStore;
   blobResolved = true;
   try {
-    const mod = require('@netlify/blobs');
+    // Built non-literally on purpose: @netlify/blobs is provided by the Netlify
+    // Functions runtime, and a static require() would make the build try to
+    // resolve (and install) it as a dependency. A runtime lookup keeps the
+    // build independent of it, and the catch covers runtimes without it.
+    const moduleId = ['@netlify', 'blobs'].join('/');
+    const mod = require(moduleId);
     blobStore = mod.getStore(STORE_NAME);
   } catch (e) {
     blobStore = null;
