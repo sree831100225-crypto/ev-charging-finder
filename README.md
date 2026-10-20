@@ -7,6 +7,13 @@ station name, or by sharing their current location.
 Live data source: [Open Charge Map](https://openchargemap.org) — 1,872 stations
 across India (snapshot current to April 2026).
 
+**Live:**
+
+| Build | URL | Login |
+|---|---|---|
+| Netlify (api mode) | https://ev-charging-finder-ugbp.netlify.app | real OTP, dataset behind login |
+| GitHub Pages (static mode) | https://sree831100225-crypto.github.io/ev-charging-finder/ | browser-generated code, dataset public |
+
 ## Two run modes, one codebase
 
 The front-end probes `/api/config` at boot and picks a mode automatically:
@@ -62,10 +69,22 @@ No build step. The login will be a client-side gate (see the table above).
 
 ## Deploy — Netlify (api mode, real OTP)
 
-1. Netlify → **Add new site → Import an existing project** → pick this repo.
-2. Build command: none. Publish directory `docs` and functions `netlify/functions`
-   are already set in `netlify.toml`.
-3. Add environment variables (Site configuration → Environment variables):
+Already provisioned. To (re)deploy:
+
+**Option A — GitHub Actions (used for the current deploy).** Run the
+`Deploy to Netlify` workflow from the Actions tab. It needs one repository
+secret: `NETLIFY_AUTH_TOKEN` (a Netlify personal access token) — durable, and
+the recommended setting. `NETLIFY_MCP_PROXY_PATH` also works but is a
+short-lived credential issued by the Netlify MCP, so prefer the token.
+
+**Option B — the dashboard.** Netlify → **Add new site → Import an existing
+project** → pick this repo; or link the repo to the existing project under
+**Build & deploy**.
+
+Either way: build command none, publish directory `docs`, functions
+`netlify/functions` (all set in `netlify.toml`).
+
+Then set the environment variables (Site configuration → Environment variables):
 
    | Key | Required | Notes |
    |---|---|---|
