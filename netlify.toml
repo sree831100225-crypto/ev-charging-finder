@@ -9,6 +9,14 @@
   status = 200
   force = true
 
+# In api mode the dataset must only be served by stations.js after login, so
+# block the static copy that static mode (GitHub Pages) uses.
+[[redirects]]
+  from = "/data/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
