@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { sign, verify, codeHash, normalizeMobile } = require('./lib/auth');
-const { recordLogin } = require('./lib/users');
+const { recordLogin, initFromEvent } = require('./lib/users');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -9,6 +9,7 @@ const json = (statusCode, obj) => ({
 });
 
 exports.handler = async (event) => {
+  initFromEvent(event);
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   let body;

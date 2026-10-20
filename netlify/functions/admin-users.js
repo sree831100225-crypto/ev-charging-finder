@@ -8,7 +8,7 @@
  * refuses to serve anything, so a misconfigured deploy cannot leak the list.
  */
 const crypto = require('crypto');
-const { listUsers, stats, selfTest } = require('./lib/users');
+const { listUsers, stats, selfTest, initFromEvent } = require('./lib/users');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -23,6 +23,7 @@ function safeEqual(a, b) {
 }
 
 exports.handler = async (event) => {
+  initFromEvent(event);
   const configured = process.env.ADMIN_TOKEN;
   if (!configured) {
     return json(503, { error: 'ADMIN_TOKEN is not set on this site, so this endpoint is disabled.' });

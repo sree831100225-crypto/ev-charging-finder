@@ -24,6 +24,7 @@ const mem = new Map();   // dev/test fallback only
 let blobStore;
 let blobResolved = false;
 let blobError = null;   // surfaced via stats() to aid diagnosis
+let lastEventBlobs = null;   // did the event carry a blobs payload?
 
 function getBlobStore() {
   if (blobResolved) return blobStore;
@@ -47,6 +48,28 @@ function keyFor(mobile) {
 /** Keyed hash, so the same number always maps to the same digest. */
 function hashMobile(mobile) {
   return crypto.createHmac('sha256', SALT).update(String(mobile)).digest('hex').slice(0, 32);
+}
+
+/**
+ * Some deploy types do not inject the Blobs environment automatically. When the
+ * runtime hands us a `blobs` payload on the event, connectLambda() can set the
+ * context from it. Harmless when the payload is absent.
+ */
+function initFromEvent(event) {
+  try {
+    lastEventBlobs = !!(event && event.blobs);
+    if (!event || !event.blobs) return false;
+    const { connectLambda } = require('@netlify/blobs');
+    if (typeof connectLambda !== 'function') return false;
+    connectLambda(event);
+    blobResolved = false;   // re-resolve now that the context is set
+    blobStore = undefined;
+    blobError = null;
+    return true;
+  } catch (e) {
+    blobError = String((e && e.message) || e);
+    return false;
+  }
 }
 
 /**
@@ -123,6 +146,7 @@ async function stats() {
     store_mode: MODE,
     storage: getBlobStore() ? 'netlify-blobs' : 'memory (dev only — not persisted)',
     blob_error: getBlobStore() ? null : blobError,
+    event_blobs_present: lastEventBlobs,
   };
 }
 
@@ -145,4 +169,4 @@ async function selfTest() {
   }
 }
 
-module.exports = { recordLogin, listUsers, stats, selfTest, keyFor, hashMobile, _reset: () => mem.clear() };
+module.exports = { recordLogin, listUsers, stats, selfTest, initFromEvent, keyFor, hashMobile, _reset: () => mem.clear() };
