@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { sign, verify, codeHash, normalizeMobile } = require('./lib/auth');
+const { recordLogin } = require('./lib/users');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -33,6 +34,16 @@ exports.handler = async (event) => {
     return json(401, { error: 'Incorrect code' });
   }
 
+  // Record the sign-in. The number is the store key, so repeat logins update
+  // one record rather than duplicating. A storage failure must never block login.
+  let firstTime = null;
+  try {
+    const rec = await recordLogin(mobile);
+    firstTime = rec.first_time === true;
+  } catch (e) {
+    /* best effort */
+  }
+
   const sessionToken = sign({ m: mobile, exp: Date.now() + 12 * 60 * 60 * 1000 });
-  return json(200, { ok: true, sessionToken, mobile, expiresIn: 12 * 60 * 60 });
+  return json(200, { ok: true, sessionToken, mobile, expiresIn: 12 * 60 * 60, first_time: firstTime });
 };

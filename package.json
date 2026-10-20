@@ -1,10 +1,13 @@
 {
   "name": "ev-charging-finder",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Searchable India EV charging station finder with mobile OTP login. Data from Open Charge Map.",
+  "description": "Searchable India EV charging station finder with mobile OTP login. Data from Open Charge Map and Zenodo.",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.5"
   },
   "scripts": {
     "dev": "netlify dev"

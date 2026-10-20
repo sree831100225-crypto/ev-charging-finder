@@ -38,6 +38,8 @@ dataset genuinely protected, use api mode.
 
 - **Mobile OTP login** — a visitor enters a 10-digit Indian mobile number and a
   6-digit code before the app opens.
+- **Sign-in registry** — every successful login is recorded against the number,
+  deduplicated, so the operator can see how many unique people have used it.
 - **Search** by free text (city, area, station name, operator) or by pincode.
 - **Search by location** — place names are geocoded (OpenStreetMap Nominatim),
   or the visitor can share their current location.
@@ -98,6 +100,9 @@ Then set the environment variables (Site configuration → Environment variables
    | `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` | MSG91 | |
    | `FAST2SMS_API_KEY` | Fast2SMS | |
    | `GEOCODE_UA` | recommended | Contact URL/email for the Nominatim User-Agent |
+   | `ADMIN_TOKEN` | for the registry | Long random string. Without it `/api/admin-users` stays disabled. |
+   | `USER_STORE_MODE` | optional | `full` (default) stores the number; `hashed` stores only a keyed hash |
+   | `USER_HASH_SALT` | with `hashed` | Stable secret so the same number hashes consistently |
 
    With no SMS provider set, api mode runs in *dev mode*: no SMS is sent and the
    code is shown on screen.
@@ -118,6 +123,43 @@ will 404 and the app will fall back automatically.
 node test_flow.js      # OTP flow, auth gating, search, filters
 node test_geocode.js   # geocoder response mapping
 ```
+
+## Login registry
+
+Every successful OTP verification records the number in a Netlify Blobs store
+(`ev-users`). The number is the store key, so the store *is* the deduplication —
+repeating a login updates one record instead of adding another, and unique users
+is simply the number of keys.
+
+Each record holds `first_seen`, `last_seen` and a `logins` count.
+
+### Reading it
+
+```
+GET /api/admin-users          header:  x-admin-token: <ADMIN_TOKEN>
+```
+
+Returns unique users, total logins, active-in-last-24h, repeat users, and the
+list. With no `ADMIN_TOKEN` set the endpoint returns 503 and serves nothing.
+You can also browse the store directly under **Blobs** in the Netlify dashboard.
+
+### Privacy
+
+This is personal data — phone numbers — so under India's Digital Personal Data
+Protection Act, 2023 you are the data fiduciary for it. The app now says on the
+login screen that the sign-in is recorded, which is the consent notice. Two
+further controls are built in:
+
+- **`USER_STORE_MODE=hashed`** stores only an HMAC of the number (keyed with
+  `USER_HASH_SALT`). You keep unique-user counts and repeat-visit stats, but no
+  raw numbers are retained.
+- **Retention** is yours to manage: delete keys from the Blobs store, or keep
+  only what you need. Prefer the hashed mode unless you genuinely need to
+  contact users.
+
+Capturing happens in the backend, so it applies to **api mode** (Netlify) only.
+Logins on the static GitHub Pages build are generated in the browser and are not
+recorded anywhere.
 
 ## Data and licence
 
