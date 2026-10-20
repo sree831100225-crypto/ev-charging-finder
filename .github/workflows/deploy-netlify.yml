@@ -1,0 +1,40 @@
+name: Deploy to Netlify
+
+# Runs in GitHub's own runners, so it works even when the machine you are
+# working from cannot reach Netlify's API directly.
+#
+# Credentials (set one of these under Settings -> Secrets and variables -> Actions):
+#   NETLIFY_AUTH_TOKEN        a Netlify personal access token (recommended, durable)
+#   NETLIFY_MCP_PROXY_PATH    an ephemeral deploy credential issued by the Netlify MCP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy
+        env:
+          SITE_ID: 3a6765a5-4512-4c85-9980-27f2cba743aa
+          AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          PROXY_PATH: ${{ secrets.NETLIFY_MCP_PROXY_PATH }}
+        run: |
+          set -e
+          if [ -n "$AUTH_TOKEN" ]; then
+            echo "Deploying with a Netlify personal access token"
+            npx -y netlify-cli@latest deploy --prod --site "$SITE_ID"
+          elif [ -n "$PROXY_PATH" ]; then
+            echo "Deploying with the Netlify MCP proxy credential"
+            npx -y @netlify/mcp@latest --site-id "$SITE_ID" --proxy-path "$PROXY_PATH"
+          else
+            echo "No Netlify credential configured." >&2
+            echo "Add NETLIFY_AUTH_TOKEN (recommended) or NETLIFY_MCP_PROXY_PATH under repository secrets." >&2
+            exit 1
+          fi
