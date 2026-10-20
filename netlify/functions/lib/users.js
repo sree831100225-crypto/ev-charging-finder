@@ -23,6 +23,7 @@ const SALT = process.env.USER_HASH_SALT || process.env.APP_SECRET || 'dev-salt-n
 const mem = new Map();   // dev/test fallback only
 let blobStore;
 let blobResolved = false;
+let blobError = null;   // surfaced via stats() to aid diagnosis
 
 function getBlobStore() {
   if (blobResolved) return blobStore;
@@ -33,6 +34,7 @@ function getBlobStore() {
     blobStore = getStore(STORE_NAME);
   } catch (e) {
     blobStore = null;
+    blobError = String((e && e.message) || e);
   }
   return blobStore;
 }
@@ -120,6 +122,7 @@ async function stats() {
     repeat_users: items.filter((u) => (u.logins || 0) > 1).length,
     store_mode: MODE,
     storage: getBlobStore() ? 'netlify-blobs' : 'memory (dev only — not persisted)',
+    blob_error: getBlobStore() ? null : blobError,
   };
 }
 
