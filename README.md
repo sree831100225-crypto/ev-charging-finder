@@ -4,8 +4,12 @@ A searchable web app for electric-vehicle charging stations across India, with
 mobile-number OTP login. Visitors can find chargers by city, area, pincode or
 station name, or by sharing their current location.
 
-Live data source: [Open Charge Map](https://openchargemap.org) — 1,872 stations
-across India (snapshot current to April 2026).
+Data: **3,198 stations across India**, merged from two open sources —
+[Open Charge Map](https://openchargemap.org) (1,872) and Zenodo record 18818786
+(1,326). This is **not** the complete Indian network: the Bureau of Energy
+Efficiency (Ministry of Power) register listed 39,641 public charging points as
+of 26 Oct 2025, and it is not included here. Each record carries a `src` field
+(`OCM` or `Zenodo`) so you can tell the sources apart.
 
 **Live:**
 
@@ -117,9 +121,20 @@ node test_geocode.js   # geocoder response mapping
 
 ## Data and licence
 
-Station data is from Open Charge Map and is mixed-licensed (ODbL / CC-BY-SA and
-provider-specific). Attribution belongs to Open Charge Map and its data
-providers. Review OCM's terms before redistributing the data.
+Two sources, distinguished by the `src` field on every record:
+
+- **OCM** — Open Charge Map, mixed-licensed (ODbL / CC-BY-SA and
+  provider-specific). Attribution belongs to Open Charge Map and its data
+  providers. This feed carries the richer fields: connectors, power, operator
+  and payment category.
+- **Zenodo** — Zenodo record 18818786, "Integrated EV Charging Infrastructure
+  Dataset (India)", harmonised from the Kaggle *EV charging stations in India -
+  simplified (2025)* dataset and Ministry of Power parliamentary replies. Thinner
+  records: name, address and coordinates only, no payment or connector detail.
+
+Neither feed is the complete Indian network. The authoritative register is the
+Bureau of Energy Efficiency National Online Database (39,641 public charging
+points, 26 Oct 2025), which is not included.
 
 Geocoding uses OpenStreetMap Nominatim; map tiles are © OpenStreetMap
 contributors. Please respect both services' usage policies.

@@ -75,9 +75,10 @@
       });
     }
     var total = out.length;
+    var CAP = 10000;
     return {
-      count: Math.min(total, 3000), total: total, truncated: total > 3000,
-      source: STATIC.source, generated: STATIC.generated, stations: out.slice(0, 3000)
+      count: Math.min(total, CAP), total: total, truncated: total > CAP,
+      source: STATIC.source, generated: STATIC.generated, stations: out.slice(0, CAP)
     };
   }
 
@@ -281,7 +282,8 @@
       (s.op ? '<p><b>' + esc(s.op) + '</b></p>' : '') +
       '<p>' + esc([s.ad, s.tw, s.st, s.pin].filter(Boolean).join(', ')) + '</p>' +
       '<p>' + (s.kw ? esc(s.kw) + ' kW &middot; ' : '') + esc(s.ct || 'Connector n/a') + '</p>' +
-      '<p>' + esc(pay) + (typeof s.d === 'number' ? ' &middot; ' + s.d + ' km away' : '') + '</p>';
+      '<p>' + esc(pay) + (typeof s.d === 'number' ? ' &middot; ' + s.d + ' km away' : '') + '</p>' +
+      (s.src ? '<p><small>Source: ' + esc(s.src) + '</small></p>' : '');
   }
 
   function esc(v) {
@@ -304,6 +306,7 @@
       if (s.kw) tags.push('<span class="tag">' + esc(s.kw) + ' kW</span>');
       if (s.ct) tags.push('<span class="tag">' + esc(s.ct) + '</span>');
       if (pay) tags.push('<span class="tag amber">' + esc(pay) + '</span>');
+      if (s.src) tags.push('<span class="tag src">' + esc(s.src) + '</span>');
       return '<div class="card" data-i="' + i + '">' +
         (typeof s.d === 'number' ? '<span class="dist">' + s.d + ' km</span>' : '') +
         '<h3>' + esc(s.nm || 'EV charging station') + '</h3>' +

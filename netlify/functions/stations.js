@@ -72,7 +72,7 @@ exports.handler = async (event) => {
     out = out.slice().sort((a, b) => (a.st || '').localeCompare(b.st || '') || (a.nm || '').localeCompare(b.nm || ''));
   }
 
-  const limit = Math.min(parseInt(q.limit, 10) || 3000, 5000);
+  const limit = Math.min(parseInt(q.limit, 10) || 10000, 10000);
   const total = out.length;
   out = out.slice(0, limit);
 
