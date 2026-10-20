@@ -15,7 +15,7 @@ of 26 Oct 2025, and it is not included here. Each record carries a `src` field
 
 | Build | URL | Login |
 |---|---|---|
-| Netlify (api mode) | https://ev-charging-finder-ugbp.netlify.app | real OTP, dataset behind login |
+| Netlify (api mode) | https://ev-charging-app-india.netlify.app | real OTP, dataset behind login |
 | GitHub Pages (static mode) | https://sree831100225-crypto.github.io/ev-charging-finder/ | browser-generated code, dataset public |
 
 ## Two run modes, one codebase
