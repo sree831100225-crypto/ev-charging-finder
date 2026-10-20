@@ -136,8 +136,18 @@ Each record holds `first_seen`, `last_seen` and a `logins` count.
 ### Reading it
 
 ```
-GET /api/admin-users          header:  x-admin-token: <ADMIN_TOKEN>
+GET /api/admin-users                     header:  x-admin-token: <ADMIN_TOKEN>
+GET /api/admin-users?selftest=1          write/read/delete probe on the store
+GET /api/admin-users?simulate=<mobile>   record a login for that number (ops check)
+GET /api/admin-users?erase=<mobile>      delete one number (erasure request)
 ```
+
+All four require the token and all four are safe to run by hand.
+
+**Reads can lag writes by a few seconds.** Netlify Blobs is eventually
+consistent, so the `after` snapshot returned by `simulate` and `erase` may show
+the pre-write state. Re-read the plain endpoint a moment later for the true
+count — that is what a login does too.
 
 Returns unique users, total logins, active-in-last-24h, repeat users, and the
 list. With no `ADMIN_TOKEN` set the endpoint returns 503 and serves nothing.
