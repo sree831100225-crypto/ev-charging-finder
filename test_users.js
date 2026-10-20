@@ -47,6 +47,15 @@ const ev = (o) => ({ httpMethod: 'GET', headers: o.headers || {}, queryStringPar
   check('second login does not create a second user', s.unique_users === 1 && s.total_logins === 2, s.unique_users + ' users / ' + s.total_logins + ' logins');
   check('first_time false on a returning user', v2.body.first_time === false);
 
+  // ---- erasure
+  const before = (await users.stats()).unique_users;
+  const er = await users.eraseUser('9000000001');
+  const after = (await users.stats()).unique_users;
+  check('erase removes the number from the registry', er.erased === true && after === before - 1, before + ' -> ' + after);
+  check('erasing an unknown number is harmless', (await users.eraseUser('9111111111')).erased === true);
+
+  await users.recordLogin('9000000001');   // restore for the admin checks below
+
   // ---- admin endpoint
   process.env.ADMIN_TOKEN = 'admin-secret-xyz';
   let r = P(await adminUsers(ev({})));

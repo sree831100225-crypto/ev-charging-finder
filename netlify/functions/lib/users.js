@@ -169,4 +169,17 @@ async function selfTest() {
   }
 }
 
-module.exports = { recordLogin, listUsers, stats, selfTest, initFromEvent, keyFor, hashMobile, _reset: () => mem.clear() };
+/** Remove a number from the registry (data-erasure request, or cleaning up a test entry). */
+async function eraseUser(mobile) {
+  if (!mobile) return { erased: false, error: 'no number supplied' };
+  const key = keyFor(mobile);
+  const store = getBlobStore();
+  if (store) {
+    try { await store.delete(key); } catch (e) { return { erased: false, error: String(e.message) }; }
+  } else {
+    mem.delete(key);
+  }
+  return { erased: true, key };
+}
+
+module.exports = { recordLogin, listUsers, stats, selfTest, initFromEvent, eraseUser, keyFor, hashMobile, _reset: () => mem.clear() };

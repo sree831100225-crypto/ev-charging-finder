@@ -8,7 +8,7 @@
  * refuses to serve anything, so a misconfigured deploy cannot leak the list.
  */
 const crypto = require('crypto');
-const { listUsers, stats, selfTest, initFromEvent } = require('./lib/users');
+const { listUsers, stats, selfTest, initFromEvent, recordLogin, eraseUser } = require('./lib/users');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -36,9 +36,24 @@ exports.handler = async (event) => {
     return json(401, { error: 'Unauthorized' });
   }
 
-  if ((event.queryStringParameters || {}).selftest === '1') {
+  const q = event.queryStringParameters || {};
+
+  if (q.selftest === '1') {
     const probe = await selfTest();
     return json(probe.ok ? 200 : 500, { selftest: probe });
+  }
+
+  // Exercise the real capture path with a chosen number (ops check).
+  if (q.simulate) {
+    if (!/^[6-9]\d{9}$/.test(String(q.simulate))) return json(400, { error: 'simulate needs a 10-digit mobile' });
+    const rec = await recordLogin(String(q.simulate));
+    return json(200, { simulate: rec, mobile: q.simulate, after: await stats() });
+  }
+
+  // Erase one number (data-erasure request, or tidy up a test entry).
+  if (q.erase) {
+    const res = await eraseUser(String(q.erase));
+    return json(200, { erase: res, mobile: q.erase, after: await stats() });
   }
 
   const summary = await stats();
