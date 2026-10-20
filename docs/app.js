@@ -1,11 +1,21 @@
-/* EV Charging Station Finder - front-end logic */
+/* EV Charging Station Finder - front-end logic
+ *
+ * One codebase, two run modes:
+ *   api    - a backend is present (Netlify Functions). Real OTP over SMS and
+ *            the dataset served only to authenticated requests.
+ *   static - no backend (e.g. GitHub Pages). The OTP step becomes a local
+ *            gate and the dataset is fetched from ./data/stations.json.
+ * The mode is detected at boot by probing /api/config.
+ */
 (function () {
   'use strict';
 
-  var API = '/api';
   var $ = function (id) { return document.getElementById(id); };
   var SKEY = 'ev_session_v1';
 
+  var MODE = 'static';
+  var STATIC = null;      // loaded dataset in static mode
+  var localOtp = null;    // pending code in static mode
   var state = { token: null, mobile: null, otpToken: null, map: null, layer: null, results: [] };
 
   /* ---------------------------------------------------------- session */
@@ -19,18 +29,123 @@
   }
   function clearSession() { try { localStorage.removeItem(SKEY); } catch (e) {} }
 
+  /* ---------------------------------------------------------- geo maths */
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    var R = 6371, toRad = function (d) { return (d * Math.PI) / 180; };
+    var dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  /* ---------------------------------------------------------- static backend */
+  function localStations(p) {
+    var out = STATIC.stations;
+    if (p.text) {
+      var t = p.text.trim().toLowerCase();
+      if (t) {
+        out = out.filter(function (s) {
+          return [s.nm, s.op, s.tw, s.st, s.pin, s.ad].filter(Boolean).some(function (v) {
+            return String(v).toLowerCase().indexOf(t) >= 0;
+          });
+        });
+      }
+    }
+    if (p.pin) out = out.filter(function (s) { return (s.pin || '').indexOf(p.pin) === 0; });
+    if (p.state) out = out.filter(function (s) { return (s.st || '').toLowerCase() === p.state.toLowerCase(); });
+    if (p.connector) {
+      var c = p.connector.toLowerCase();
+      out = out.filter(function (s) { return (s.ct || '').toLowerCase().indexOf(c) >= 0; });
+    }
+    if (p.fast === '1') out = out.filter(function (s) { return s.fc === 1; });
+    if (p.payment === 'pay') out = out.filter(function (s) { return s.py === 1; });
+    else if (p.payment === 'membership') out = out.filter(function (s) { return s.mb === 1; });
+    else if (p.payment === 'public') out = out.filter(function (s) { return (s.us || '').indexOf('Public') === 0; });
+    else if (p.payment === 'private') out = out.filter(function (s) { return /^Priv/i.test(s.us || ''); });
+
+    var lat = parseFloat(p.lat), lon = parseFloat(p.lon);
+    if (isFinite(lat) && isFinite(lon)) {
+      var radius = parseFloat(p.radius) || 25;
+      out = out.map(function (s) {
+        return Object.assign({}, s, { d: Math.round(haversineKm(lat, lon, s.la, s.lo) * 10) / 10 });
+      }).filter(function (s) { return s.d <= radius; }).sort(function (a, b) { return a.d - b.d; });
+    } else if (!p.text && !p.pin && !p.state) {
+      out = out.slice().sort(function (a, b) {
+        return (a.st || '').localeCompare(b.st || '') || (a.nm || '').localeCompare(b.nm || '');
+      });
+    }
+    var total = out.length;
+    return {
+      count: Math.min(total, 3000), total: total, truncated: total > 3000,
+      source: STATIC.source, generated: STATIC.generated, stations: out.slice(0, 3000)
+    };
+  }
+
+  function localGeocode(q) {
+    if (!q || q.length < 3) return Promise.resolve({ ok: false, status: 400, data: { error: 'Enter at least 3 characters' } });
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&q=' + encodeURIComponent(q);
+    return fetch(url, { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (arr) {
+        return {
+          ok: true, status: 200, data: {
+            query: q,
+            results: (arr || []).map(function (r) {
+              return { name: r.display_name, lat: parseFloat(r.lat), lon: parseFloat(r.lon), type: r.type };
+            })
+          }
+        };
+      })
+      .catch(function () { return { ok: false, status: 502, data: { error: 'Geocoding unavailable' } }; });
+  }
+
+  function localRequestOtp(mobile) {
+    var code = String(Math.floor(100000 + Math.random() * 900000));
+    localOtp = { mobile: mobile, code: code, exp: Date.now() + 5 * 60 * 1000 };
+    return { ok: true, status: 200, data: { ok: true, dev_mode: true, dev_code: code, otpToken: 'local' } };
+  }
+
+  function localVerifyOtp(body) {
+    if (!localOtp || localOtp.mobile !== body.mobile || Date.now() > localOtp.exp) {
+      return { ok: false, status: 400, data: { error: 'This code has expired. Please request a new one.' } };
+    }
+    if (String(body.code) !== localOtp.code) return { ok: false, status: 401, data: { error: 'Incorrect code' } };
+    localOtp = null;
+    return { ok: true, status: 200, data: { ok: true, sessionToken: 'local-' + Date.now(), mobile: body.mobile, expiresIn: 12 * 3600 } };
+  }
+
+  function apiLocal(path, opts) {
+    var qi = path.indexOf('?');
+    var name = (qi >= 0 ? path.slice(0, qi) : path).replace(/^\//, '');
+    var params = {};
+    if (qi >= 0) new URLSearchParams(path.slice(qi + 1)).forEach(function (v, k) { params[k] = v; });
+    var body = {};
+    try { body = opts && opts.body ? JSON.parse(opts.body) : {}; } catch (e) {}
+
+    if (name === 'stations') {
+      if (!STATIC) return Promise.resolve({ ok: false, status: 503, data: { error: 'Dataset not loaded' } });
+      return Promise.resolve({ ok: true, status: 200, data: localStations(params) });
+    }
+    if (name === 'geocode') return localGeocode(params.q || '');
+    if (name === 'request-otp') return Promise.resolve(localRequestOtp(body.mobile));
+    if (name === 'verify-otp') return Promise.resolve(localVerifyOtp(body));
+    return Promise.resolve({ ok: false, status: 404, data: { error: 'Not found' } });
+  }
+
   /* ---------------------------------------------------------- http */
-  function api(path, opts) {
+  function apiReal(path, opts) {
     opts = opts || {};
     var headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
     if (state.token) headers.Authorization = 'Bearer ' + state.token;
-    return fetch(API + path, Object.assign({}, opts, { headers: headers }))
+    return fetch('/api' + path, Object.assign({}, opts, { headers: headers }))
       .then(function (res) {
         return res.json().catch(function () { return null; }).then(function (data) {
           return { ok: res.ok, status: res.status, data: data };
         });
       });
   }
+  function api(path, opts) { return MODE === 'static' ? apiLocal(path, opts) : apiReal(path, opts); }
+
   function qs(obj) {
     return Object.keys(obj)
       .filter(function (k) { return obj[k] !== '' && obj[k] !== null && obj[k] !== undefined; })
@@ -76,8 +191,8 @@
         msg('Code sent.', 'ok');
         var dn = $('devNotice');
         if (r.data.dev_mode && r.data.dev_code) {
-          dn.innerHTML = '<b>Development mode.</b> No SMS provider is configured, so no real text was sent. ' +
-            'Your code is <code>' + r.data.dev_code + '</code>. Set an SMS provider in Netlify to send real messages.';
+          dn.innerHTML = '<b>No SMS provider is connected.</b> No real text was sent — ' +
+            'your code is <code>' + r.data.dev_code + '</code>.';
           dn.classList.remove('hidden');
         } else { dn.classList.add('hidden'); }
       })
@@ -153,7 +268,6 @@
         radius: 6, color: color, weight: 1.5, fillColor: color, fillOpacity: .55
       });
       m.bindPopup(popupHtml(s));
-      m.on('click', function () { m.openPopup(); });
       m.addTo(state.layer);
       bounds.push([s.la, s.lo]);
     });
@@ -194,7 +308,7 @@
         (typeof s.d === 'number' ? '<span class="dist">' + s.d + ' km</span>' : '') +
         '<h3>' + esc(s.nm || 'EV charging station') + '</h3>' +
         (s.op ? '<div class="meta">' + esc(s.op) + '</div>' : '') +
-        '<div class="meta">' + esc([s.ad, s.tw, s.state || s.st, s.pin].filter(Boolean).join(', ')) + '</div>' +
+        '<div class="meta">' + esc([s.ad, s.tw, s.st, s.pin].filter(Boolean).join(', ')) + '</div>' +
         '<div class="tags">' + tags.join('') + '</div>' +
         '</div>';
     }).join('');
@@ -218,8 +332,7 @@
 
   function loadStations(extra, note) {
     var p = Object.assign(filters(), extra);
-    var url = '/stations?' + qs(p);
-    return api(url).then(function (r) {
+    return api('/stations?' + qs(p)).then(function (r) {
       if (r.status === 401) { clearSession(); location.reload(); return; }
       if (!r.ok) { setStatus((r.data && r.data.error) || 'Could not load stations'); return; }
       state.results = r.data.stations || [];
@@ -249,7 +362,6 @@
     var f = filters();
     var base = Object.assign({}, f, { lat: '', lon: '' });
 
-    // 1. name / town / pincode matches appear immediately
     api('/stations?' + qs(Object.assign({}, base, { text: text })))
       .then(function (r) {
         if (r.status === 401) { clearSession(); location.reload(); return; }
@@ -261,7 +373,6 @@
       })
       .catch(function () {});
 
-    // 2. then fold in everything near the resolved place, once geocoding returns
     api('/geocode?q=' + encodeURIComponent(text))
       .then(function (r) {
         if (!r.ok || !r.data.results || !r.data.results.length) {
@@ -316,9 +427,35 @@
   });
 
   /* ---------------------------------------------------------- boot */
-  (function boot() {
+  function boot() {
     var s = readSession();
     if (s) { state.token = s.token; enterApp(s.mobile); }
     else { $('mobile').focus(); }
-  })();
+  }
+
+  function showStaticNotice() {
+    var n = $('modeNotice');
+    if (!n) return;
+    n.innerHTML = '<b>Static build (GitHub Pages).</b> There is no server on this host, so the ' +
+      'verification code is generated in your browser and shown on screen — no SMS is sent. ' +
+      'The full build, with real SMS and the dataset served only to logged-in users, runs on Netlify.';
+    n.classList.remove('hidden');
+  }
+
+  function detectMode() {
+    return fetch('/api/config', { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (c) { return (c && c.mode === 'api') ? 'api' : 'static'; })
+      .catch(function () { return 'static'; });
+  }
+
+  detectMode().then(function (mode) {
+    MODE = mode;
+    if (MODE !== 'static') return null;
+    showStaticNotice();
+    return fetch('data/stations.json')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { STATIC = d; })
+      .catch(function () {});
+  }).then(boot).catch(boot);
 })();

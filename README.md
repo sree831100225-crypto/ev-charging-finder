@@ -7,67 +7,87 @@ station name, or by sharing their current location.
 Live data source: [Open Charge Map](https://openchargemap.org) — 1,872 stations
 across India (snapshot current to April 2026).
 
-## What it does
+## Two run modes, one codebase
+
+The front-end probes `/api/config` at boot and picks a mode automatically:
+
+| | **api** mode | **static** mode |
+|---|---|---|
+| Host | Netlify (static + Functions) | GitHub Pages |
+| Login | Real 6-digit OTP by SMS | Code generated in the browser, shown on screen |
+| Dataset | Served by `stations.js`, only to a logged-in session | `docs/data/stations.json`, public |
+| Geocoding | Proxied through a Function | Called directly from the browser |
+
+**Static mode is a gate, not security.** There is no server on a static host, so
+anyone can read `data/stations.json` and the code is generated client-side. That
+is acceptable here because Open Charge Map is open data — but if you need the
+dataset genuinely protected, use api mode.
+
+## Features
 
 - **Mobile OTP login** — a visitor enters a 10-digit Indian mobile number and a
-  6-digit code before any data is shown.
+  6-digit code before the app opens.
 - **Search** by free text (city, area, station name, operator) or by pincode.
-- **Search by location** — free-text place names are geocoded (OpenStreetMap
-  Nominatim), or the visitor can share their current location.
+- **Search by location** — place names are geocoded (OpenStreetMap Nominatim),
+  or the visitor can share their current location.
 - **Filters** — radius, connector type, fast-charging only, payment type.
-- **Map + list** view with distance, power (kW), connector types and payment
-  category for each station.
+- **Map + list** with distance, power (kW), connector types and payment category.
 
-## Architecture
+## Layout
 
 ```
-public/                     static front-end (no framework, no build step)
+docs/                       the front-end (GitHub Pages serves this folder)
   index.html  styles.css  app.js
+  data/stations.json        dataset for static mode
 netlify/functions/
-  request-otp.js            POST  { mobile }        -> sends a 6-digit code
-  verify-otp.js             POST  { mobile, code, otpToken } -> session token
-  stations.js               GET   (Bearer token)    -> station data
-  geocode.js                GET   ?q=               -> place -> lat/lon
+  config.js                 reports { mode: "api" }
+  request-otp.js            POST { mobile }               -> sends a code
+  verify-otp.js             POST { mobile, code, otpToken } -> session token
+  stations.js               GET (Bearer token)            -> station data
+  geocode.js                GET ?q=                       -> place -> lat/lon
   lib/auth.js               HMAC-signed stateless tokens
   lib/sms.js                SMS provider abstraction
   lib/http.js               outbound HTTP helper
-  data/stations.json        the station dataset (served only after login)
-netlify.toml                publish dir, functions dir, /api/* redirects
+  data/stations.json        dataset for api mode
+netlify.toml                publish = docs, functions = netlify/functions
 ```
 
-The dataset is **not** shipped to the browser. It is served only by
-`stations.js`, which requires a valid session token, so the data cannot be
-downloaded without logging in.
+## Deploy — GitHub Pages (static mode)
 
-Sessions are stateless: tokens are HMAC-signed with `APP_SECRET`, so no
-database is required.
+1. Repository **Settings → Pages**.
+2. Source: **Deploy from a branch**; Branch: `main`; Folder: **/docs**.
+3. Save. The site appears at `https://<user>.github.io/ev-charging-finder/`.
 
-## Deploy
+No build step. The login will be a client-side gate (see the table above).
 
-1. Push this repository to GitHub.
-2. On Netlify: **Add new site → Import an existing project**, pick the repo.
-   Build command: none. Publish directory: `public`. Functions: `netlify/functions`
-   (already set in `netlify.toml`).
-3. Set environment variables (Site settings → Environment variables):
+## Deploy — Netlify (api mode, real OTP)
+
+1. Netlify → **Add new site → Import an existing project** → pick this repo.
+2. Build command: none. Publish directory `docs` and functions `netlify/functions`
+   are already set in `netlify.toml`.
+3. Add environment variables (Site configuration → Environment variables):
 
    | Key | Required | Notes |
    |---|---|---|
    | `APP_SECRET` | **yes** | Any long random string. Signs OTP and session tokens. |
-   | `SMS_PROVIDER` | yes for real SMS | `twilio`, `msg91` or `fast2sms` |
-   | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | for Twilio | |
-   | `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` | for MSG91 | |
-   | `FAST2SMS_API_KEY` | for Fast2SMS | |
-   | `GEOCODE_UA` | recommended | A contact URL/email for the Nominatim User-Agent |
+   | `SMS_PROVIDER` | for real SMS | `twilio`, `msg91` or `fast2sms` |
+   | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | Twilio | |
+   | `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` | MSG91 | |
+   | `FAST2SMS_API_KEY` | Fast2SMS | |
+   | `GEOCODE_UA` | recommended | Contact URL/email for the Nominatim User-Agent |
 
-   With **no** SMS provider set, the app runs in *dev mode*: no SMS is sent and
-   the code is shown on screen. Convenient for testing — **not** secure.
+   With no SMS provider set, api mode runs in *dev mode*: no SMS is sent and the
+   code is shown on screen.
 
 ## Local development
 
 ```bash
 npm install -g netlify-cli
-netlify dev
+netlify dev          # runs api mode at http://localhost:8888
 ```
+
+To preview static mode, serve `docs/` with any static server — `/api/config`
+will 404 and the app will fall back automatically.
 
 ## Tests
 
