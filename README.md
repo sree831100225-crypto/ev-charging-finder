@@ -143,6 +143,14 @@ Returns unique users, total logins, active-in-last-24h, repeat users, and the
 list. With no `ADMIN_TOKEN` set the endpoint returns 503 and serves nothing.
 You can also browse the store directly under **Blobs** in the Netlify dashboard.
 
+The response includes `storage` — check it says `netlify-blobs`. If it says
+`memory (dev only)`, the store is not persisting and the counters will reset.
+Two things make it work: `@netlify/blobs` is a dependency (pinned to v10, which
+supports Node 18; v11 needs Node 22 and breaks the Netlify build), and the
+function calls `connectLambda(event)` to seed the Blobs context, because this
+deploy type does not inject it automatically. `?selftest=1` runs a
+write/read/delete probe so you can confirm the store end to end.
+
 ### Privacy
 
 This is personal data — phone numbers — so under India's Digital Personal Data
